@@ -66,6 +66,12 @@ $env:DATABASE_URL = "postgresql+psycopg://calibra:calibra@localhost:5432/calibra
 
 The Compose file starts PostgreSQL, the API, and Vite with `docker compose up --build`. Apply migrations and seed data after the services start.
 
+### Deploy a public demo on Render
+
+The repository includes a Render Blueprint in `render.yaml`. In Render, create a new Blueprint from this repository and apply it to create the Docker web service and PostgreSQL database in Singapore. Both use free plans. The container builds the frontend, runs Alembic migrations, generates deterministic synthetic starter records, seeds the demo accounts, and serves the frontend and API from the same origin.
+
+The hosted demo uses the same demo usernames and password shown above. Do not store real calibration or production data in this demo: free web services sleep when idle, free PostgreSQL expires after 30 days, and local uploads are ephemeral. Use paid persistent infrastructure and managed object storage before any real operational use.
+
 ## Generate and validate data
 
 The generator uses fixed seed `20261022` by default and writes CSV and JSON files under `data/generated/`.

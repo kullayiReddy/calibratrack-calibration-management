@@ -6,12 +6,12 @@ from backend.db import Base
 from backend import models
 
 config=context.config
-config.set_main_option("sqlalchemy.url", settings.database_url.replace("%", "%%"))
+config.set_main_option("sqlalchemy.url", settings.sqlalchemy_database_url.replace("%", "%%"))
 if config.config_file_name: fileConfig(config.config_file_name)
 target_metadata=Base.metadata
 
 def run_migrations_offline():
-    context.configure(url=settings.database_url, target_metadata=target_metadata, literal_binds=True, dialect_opts={"paramstyle":"named"})
+    context.configure(url=settings.sqlalchemy_database_url, target_metadata=target_metadata, literal_binds=True, dialect_opts={"paramstyle":"named"})
     with context.begin_transaction(): context.run_migrations()
 
 def run_migrations_online():

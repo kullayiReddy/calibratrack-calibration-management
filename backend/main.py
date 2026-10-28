@@ -4,6 +4,7 @@ import logging
 import uuid
 from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from backend.config import settings
@@ -336,3 +337,9 @@ def compliance_report(db: Session = Depends(get_db), user: User = Depends(curren
 def health(): return {"status": "ok"}
 
 app.include_router(router)
+
+# The production Docker image serves the Vite build from the API origin. Local
+# development keeps using Vite's own server and does not create this directory.
+frontend_dist = Path(__file__).resolve().parent.parent / "frontend_dist"
+if frontend_dist.is_dir():
+    app.mount("/", StaticFiles(directory=frontend_dist, html=True), name="frontend")

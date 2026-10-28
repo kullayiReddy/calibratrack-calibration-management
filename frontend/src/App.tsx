@@ -4,9 +4,7 @@ import { Activity, AlertTriangle, ArrowDownRight, ArrowUpRight, Bell, CheckCircl
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 const API = (import.meta as any).env.VITE_API_URL || 'http://localhost:8000/api/v1';
-type Summary = { active_instruments:number; due_soon:number; overdue:number; compliance_rate:number; failed_calibrations:number; missing_or_invalid_certificates:number; prohibited_uses:number; open_corrective_actions:number; downtime_minutes:number; critical_alerts:number };
 type Rows = Record<string, any[]>;
-const emptySummary:Summary={active_instruments:0,due_soon:0,overdue:0,compliance_rate:0,failed_calibrations:0,missing_or_invalid_certificates:0,prohibited_uses:0,open_corrective_actions:0,downtime_minutes:0,critical_alerts:0};
 const nav=[['Overview',LayoutDashboard],['Instrument inventory',Gauge],['Calibration schedule',Clock3],['Certificates',ClipboardCheck],['Production usage',Activity],['Work orders',Wrench],['Alerts & exceptions',Bell]] as const;
 const siteAreas:Record<string,string>={'North Plant':'Plant A','South Plant':'Plant B','Quality Lab':'Lab 1','All sites':''};
 
@@ -28,10 +26,35 @@ function pageData(page:string, rows:Rows, assets:any[]) {
   return definitions[page];
 }
 
+function summarizeSite(rows:Rows) {
+  const today=new Date().toISOString().slice(0,10);
+  const latest=new Map<string,any>();
+  for(const calibration of [...(rows.calibrations||[])].sort((a,b)=>String(a.calibration_date).localeCompare(String(b.calibration_date)))) latest.set(calibration.asset_id,calibration);
+  const recent=[...latest.values()];
+  const passing=recent.filter(c=>c.result==='PASS'&&c.next_due_date>=today).length;
+  return {
+    active_instruments:(rows.assets||[]).filter(a=>a.lifecycle_status==='ACTIVE').length,
+    overdue:recent.filter(c=>c.next_due_date<today).length,
+    due_soon:recent.filter(c=>c.next_due_date>=today&&c.next_due_date<=new Date(Date.now()+30*86400000).toISOString().slice(0,10)).length,
+    compliance_rate:Math.round(100*passing/Math.max(recent.length,1)),
+    missing_or_invalid_certificates:(rows.certificates||[]).filter(c=>c.verification_status!=='VERIFIED').length,
+    open_corrective_actions:(rows.actions||[]).filter(a=>a.status!=='CLOSED').length,
+    critical_alerts:(rows.alerts||[]).filter(a=>a.severity==='CRITICAL'&&['OPEN','ACKNOWLEDGED'].includes(a.status)).length,
+  };
+}
+
+function trendsForSite(rows:Rows) {
+  const buckets:Record<string,{month:string;PASS:number;FAIL:number;INDETERMINATE:number}>={};
+  for(const calibration of rows.calibrations||[]) {
+    const month=String(calibration.calibration_date).slice(0,7);
+    buckets[month]??={month,PASS:0,FAIL:0,INDETERMINATE:0};
+    if(calibration.result in buckets[month]) buckets[month][calibration.result as 'PASS'|'FAIL'|'INDETERMINATE']++;
+  }
+  return Object.values(buckets).sort((a,b)=>a.month.localeCompare(b.month));
+}
+
 function App(){
   const [page,setPage]=useState('Overview');
-  const [data,setData]=useState<Summary>(emptySummary);
-  const [trend,setTrend]=useState<any[]>([]);
   const [rows,setRows]=useState<Rows>({});
   const [query,setQuery]=useState('');
   const [error,setError]=useState('');
@@ -48,9 +71,7 @@ function App(){
     const headers:Record<string,string>=token?{Authorization:`Bearer ${token}`} : {};
     const load=async()=>{
       try {
-        const [summary,trends,...collections]=await Promise.all([
-          fetch(`${API}/dashboard/summary`,{headers}).then(r=>r.ok?r.json():Promise.reject(new Error('Dashboard request failed'))),
-          fetch(`${API}/dashboard/trends`,{headers}).then(r=>r.ok?r.json():Promise.reject(new Error('Trend request failed'))),
+        const collections=await Promise.all([
           ...[
             ['assets',`${API}/assets?page_size=200`],['calibrations',`${API}/calibrations?page_size=200`],
             ['certificates',`${API}/certificates`],['uses',`${API}/production-uses?page_size=200`],
@@ -58,7 +79,7 @@ function App(){
             ['actions',`${API}/corrective-actions`],['assessments',`${API}/impact-assessments`],
           ].map(async([key,url])=>[key,await fetch(url,{headers}).then(r=>r.ok?r.json():Promise.reject(new Error(`${key} request failed`)))])
         ]);
-        setData(summary);setTrend(trends.calibration_results||[]);setRows(Object.fromEntries(collections as [string,any[]][]));setError('');
+        setRows(Object.fromEntries(collections as [string,any[]][]));setError('');
       } catch(e) { setError(e instanceof Error?e.message:'Could not load operational data'); }
     };
     void load();
@@ -76,9 +97,11 @@ function App(){
   const siteAssetIds=new Set(siteAssets.map(a=>a.asset_id));
   const siteRows:Rows={...rows,assets:siteAssets};
   for(const key of ['calibrations','certificates','uses','work_orders','alerts','actions','assessments']) siteRows[key]=(rows[key]||[]).filter(r=>!r.asset_id||siteAssetIds.has(r.asset_id));
+  const data=summarizeSite(siteRows);
+  const trend=trendsForSite(siteRows);
   const filteredAssets=useMemo(()=>siteAssets.filter(a=>`${a.asset_id} ${a.asset_name} ${a.location} ${a.serial_number}`.toLowerCase().includes(query.toLowerCase())),[siteAssets,query]);
   const cards=[
-    {label:'Active instruments',value:data.active_instruments.toLocaleString(),change:'Across all locations',icon:Gauge,color:'blue'},
+    {label:'Active instruments',value:data.active_instruments.toLocaleString(),change:site==='All sites'?'Across all locations':`At ${site}`,icon:Gauge,color:'blue'},
     {label:'Calibration compliance',value:`${data.compliance_rate}%`,change:'Within valid calibration window',icon:ShieldCheck,color:'green'},
     {label:'Overdue instruments',value:data.overdue,change:'Requires immediate attention',icon:AlertTriangle,color:'red'},
     {label:'Due in next 30 days',value:data.due_soon,change:'Upcoming calibration workload',icon:Clock3,color:'amber'},
