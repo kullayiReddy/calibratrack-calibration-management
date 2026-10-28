@@ -4,6 +4,10 @@
 
 CalibraTrack is a decision-support web application for tracking industrial instruments, calibration results, certificates, production-use decisions, work orders, alerts, and audit events. It uses synthetic demonstration records and does not control plant equipment or provide an OT interlock.
 
+## Live demo
+
+Try CalibraTrack at [calibratrack-calibration-management.onrender.com](https://calibratrack-calibration-management.onrender.com). The demo uses synthetic data and may take a moment to wake after inactivity.
+
 ## What is included
 
 - FastAPI REST API with bearer-token authentication and backend role checks.
