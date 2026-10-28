@@ -99,4 +99,3 @@ The current automated suite contains unit tests for calendar-day due dates and m
 ## AI use and review
 
 AI assistance was used to scaffold and revise the application, generator, documentation, and interface. The prompt record and a candidate-editable disclosure are in [`docs/AI_USE_AND_PROMPT_HISTORY.md`](docs/AI_USE_AND_PROMPT_HISTORY.md). The candidate should complete the personal review section before submitting and be ready to explain and demonstrate the code.
-

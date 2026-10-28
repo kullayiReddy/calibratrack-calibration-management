@@ -1,0 +1,12 @@
+{
+  "start_date": "2026-01-01",
+  "end_date": "2026-12-31",
+  "profiles": {
+    "starter": {"assets": 40, "calibrations": 100, "production_uses": 1000},
+    "full": {"assets": 2000, "calibrations": 5000, "production_uses": 100000}
+  },
+  "departments": ["Utilities", "Quality", "Packaging", "Blending", "Filling", "Maintenance"],
+  "locations": ["Plant A / Line 1", "Plant A / Line 2", "Plant B / Tank Farm", "Plant B / Utilities", "Lab 1"],
+  "criticality": ["LOW", "MEDIUM", "HIGH", "CRITICAL"],
+  "interval_days": [30, 90, 180, 365]
+}

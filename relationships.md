@@ -1,0 +1,5 @@
+# Relationships
+
+`InstrumentType 1 — N Asset`; `Supplier 1 — N Asset` (optional on asset); `Asset 1 — N CalibrationPlan`; `Asset 1 — N CalibrationEvent`; `CalibrationPlan 1 — N CalibrationEvent`; `Supplier 1 — N CalibrationEvent` (optional); `CalibrationEvent 1 — N Certificate`; `Asset 1 — N Certificate`; `Asset 1 — N WorkOrder`; `CalibrationEvent 1 — N WorkOrder` (optional); `Asset 1 — N ProductionUse`; `ProductionBatch 1 — N ProductionUse` (optional); `CalibrationException 1 — N ProductionUse` (optional); `Asset 1 — N Alert`; `CalibrationEvent 1 — N Alert` (optional); `ProductionUse 1 — N Alert` (optional); `CalibrationEvent 1 — 0..1 ImpactAssessment`; `CalibrationEvent 1 — N CorrectiveAction`.
+
+Audit records intentionally use entity type and immutable entity ID rather than cascading foreign keys, so history can be retained when operational entities are retired. Deletes are not exposed for audit or operational records. Effective plan ranges are inclusive. A null `effective_to` means open-ended.

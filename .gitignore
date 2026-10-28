@@ -1,0 +1,18 @@
+# Generated synthetic artifacts are reproducible and may be regenerated.
+# Keep them out of source control unless explicitly needed as release data.
+/data/generated/
+/data/uploads/
+*.db
+.venv/
+frontend/node_modules/
+frontend/dist/
+__pycache__/
+.pytest_cache/
+/work/
+/outputs/
+*.log
+*.py[cod]
+
+# Local repository metadata used by the managed workspace
+/repo-meta/
+*.tsbuildinfo

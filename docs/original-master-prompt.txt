@@ -1,0 +1,802 @@
+# Master Prompt: Industrial Instrument Calibration Management & Compliance Platform
+
+## 1. Role and Objective
+
+Act as a senior full-stack engineer, Python backend architect, database designer, data engineer, and industrial quality-compliance specialist.
+
+Build a complete, production-oriented web application called **CalibraTrack — Instrument Calibration Management & Compliance Platform**.
+
+The platform must manage industrial instruments, calibration schedules, calibration certificates, maintenance work orders, production usage, downtime, overdue instruments, compliance alerts, corrective actions, and immutable audit trails.
+
+This must be a working end-to-end application, not just a UI prototype. Implement the frontend, backend, relational database, synthetic data generator, compliance rules engine, validation suite, analytics dashboard, documentation, and deployment configuration.
+
+All business rules must be deterministic, explainable, testable, and traceable to their source records.
+
+## 2. Technology Stack
+
+Use the following stack:
+
+- Frontend: React, TypeScript, Vite, Tailwind CSS, shadcn/ui.
+- Backend: Python 3.12+, FastAPI, Pydantic.
+- Database: PostgreSQL.
+- ORM and migrations: SQLAlchemy 2.x and Alembic.
+- Data generation: Python, Faker, NumPy, pandas.
+- Charts: Recharts.
+- API documentation: FastAPI OpenAPI/Swagger.
+- Authentication: Role-based access control with secure password hashing.
+- Testing: pytest, HTTPX, and database integration tests.
+- Deployment: Docker and Docker Compose.
+- File handling: Secure certificate upload and download with metadata stored in PostgreSQL.
+- Code quality: Type hints, structured logging, environment-based configuration, and meaningful error handling.
+
+Use a modular architecture. Keep business logic in backend service modules rather than embedding it in API routes or frontend components.
+
+## 3. User Roles
+
+Implement role-based permissions for these actors:
+
+1. **Plant Operator**
+   - View instrument status.
+   - Record production-use events.
+   - See whether an instrument is permitted for use.
+   - Receive explanations when use is blocked.
+
+2. **Maintenance Engineer**
+   - Manage calibration schedules.
+   - Record calibration results.
+   - Create and update work orders.
+   - Manage corrective actions and downtime.
+
+3. **Quality Engineer**
+   - Review calibration certificates.
+   - Verify calibration outcomes.
+   - Perform impact assessments after failures.
+   - Review and resolve compliance alerts.
+   - Approve authorized exceptions where policy permits.
+
+4. **Production Planner**
+   - View upcoming calibration requirements.
+   - View instrument availability and downtime.
+   - Identify production scheduling risks.
+
+5. **OT/IT Administrator**
+   - Manage users, roles, configuration, and system settings.
+   - View audit history and validation reports.
+   - Manage integrations and data imports.
+
+Enforce permissions on the backend. Hiding frontend buttons is not sufficient security.
+
+For a local demonstration, provide documented development seed users with non-production credentials.
+
+## 4. Database Schema
+
+Create migrations and relational models for the following entities.
+
+### Asset
+
+Fields:
+- `asset_id`: primary key, format `AST-000001`.
+- `asset_name`.
+- `serial_number`: unique.
+- `instrument_type_id`: foreign key.
+- `supplier_id`: optional foreign key.
+- `location`.
+- `department`.
+- `criticality`: LOW, MEDIUM, HIGH, CRITICAL.
+- `commissioned_at`.
+- `retired_at`: nullable.
+- `lifecycle_status`: ACTIVE, UNDER_MAINTENANCE, RETIRED.
+- `created_at`, `updated_at`.
+
+### InstrumentType
+
+Fields:
+- `instrument_type_id`: primary key.
+- `type_name`.
+- `measurement_unit`.
+- `lower_tolerance`, `upper_tolerance`.
+- `default_calibration_interval_days`.
+- `description`.
+- `created_at`, `updated_at`.
+
+### CalibrationPlan
+
+Fields:
+- `plan_id`: primary key.
+- `asset_id`: foreign key.
+- `interval_days`.
+- `effective_from`, `effective_to`.
+- `acceptance_lower`, `acceptance_upper`.
+- `certificate_required`.
+- `use_restriction_policy`.
+- `created_at`.
+
+Support effective-dated plan history. Do not overwrite historical plans when the calibration interval or tolerance changes.
+
+### CalibrationEvent
+
+Fields:
+- `calibration_id`: primary key, format `CAL-<asset-id>-2026-000001`.
+- `asset_id`: foreign key.
+- `plan_id`: foreign key.
+- `supplier_id`: optional foreign key.
+- `calibration_date`.
+- `measured_value`.
+- `reference_value`.
+- `measurement_error`.
+- `tolerance_limit`.
+- `result`: PASS, FAIL, INDETERMINATE.
+- `next_due_date`.
+- `performed_by`.
+- `impact_assessment_required`.
+- `created_at`.
+
+Calculate measurement error and pass/fail results from defined tolerances. Never randomly assign a result independently of the measurements.
+
+### Certificate
+
+Fields:
+- `certificate_id`: primary key, format `CERT-<calibration-id>`.
+- `calibration_id`: foreign key.
+- `asset_id`: foreign key, retained for direct consistency validation.
+- `certificate_number`: unique where present.
+- `issue_date`.
+- `valid_until`: nullable if validity is governed by another documented policy.
+- `document_uri` or secure storage key.
+- `verification_status`: PENDING, VERIFIED, REJECTED, EXPIRED.
+- `verified_by`, `verified_at`.
+- `created_at`.
+
+Validate that the certificate asset matches the asset referenced by its calibration event.
+
+### WorkOrder
+
+Fields:
+- `work_order_id`: primary key, format `WO-2026-000001`.
+- `asset_id`: foreign key.
+- `calibration_id`: optional foreign key.
+- `work_order_type`: CALIBRATION, REPAIR, CORRECTIVE_ACTION, INSPECTION.
+- `priority`: LOW, MEDIUM, HIGH, CRITICAL.
+- `status`: OPEN, ASSIGNED, IN_PROGRESS, BLOCKED, COMPLETED, CANCELLED.
+- `description`.
+- `opened_at`, `scheduled_start`, `started_at`, `completed_at`.
+- `downtime_minutes`.
+- `assigned_to`.
+- `created_at`, `updated_at`.
+
+### ProductionUse
+
+Fields:
+- `use_id`: primary key, format `USE-<asset-id>-<timestamp>`.
+- `asset_id`: foreign key.
+- `production_batch_id`: optional.
+- `used_at`.
+- `duration_minutes`.
+- `production_status`.
+- `calibration_status_at_use`.
+- `decision`: ALLOWED, BLOCKED, REQUIRES_REVIEW.
+- `exception_id`: nullable foreign key to a documented exception.
+- `decision_reason`.
+- `created_at`.
+
+Make the compliance decision from historical facts as of `used_at`, not the instrument's current status.
+
+### Supplier
+
+Fields:
+- `supplier_id`: primary key.
+- `supplier_name`.
+- `contact_email`.
+- `accreditation_reference`: optional.
+- `accreditation_valid_until`: optional.
+- `status`: ACTIVE, INACTIVE, SUSPENDED.
+- `created_at`, `updated_at`.
+
+### Alert
+
+Fields:
+- `alert_id`: primary key.
+- `asset_id`: foreign key.
+- `calibration_id`: optional foreign key.
+- `use_id`: optional foreign key.
+- `alert_type`.
+- `severity`: INFO, WARNING, HIGH, CRITICAL.
+- `description`.
+- `status`: OPEN, ACKNOWLEDGED, RESOLVED, FALSE_POSITIVE.
+- `created_at`, `acknowledged_at`, `resolved_at`.
+- `resolved_by`.
+- `resolution_notes`.
+
+### AuditRecord
+
+Fields:
+- `audit_id`: primary key.
+- `entity_type`.
+- `entity_id`.
+- `action`: CREATE, UPDATE, STATUS_CHANGE, APPROVE, REJECT, DECISION, DELETE_ATTEMPT.
+- `actor_id`.
+- `event_timestamp`.
+- `previous_state`: JSONB, nullable.
+- `new_state`: JSONB, nullable.
+- `reason`.
+- `correlation_id`.
+
+Audit records must be append-only through application permissions and service-layer design. Do not allow ordinary users to modify or delete historical audit records.
+
+### Additional entities
+
+Add these supporting entities because the workflow requires them:
+
+- `ImpactAssessment`: failed calibration, affected production interval, potentially affected batches, risk evaluation, disposition, reviewer, assessment status.
+- `CalibrationException`: requested extension, reason, approval, approver, effective interval, expiry, and permitted-use scope.
+- `CorrectiveAction`: failed event, root cause, corrective/preventive measures, owner, due date, status, and closure evidence.
+- `ProductionBatch`: batch identifier, production interval, status, and relevant disposition.
+- `User`: identity, role, active status, and authentication information.
+- `CalibrationPlanHistory` or effective-dated plan records if needed to preserve previous configuration.
+- Explicit bridge tables for any many-to-many relationships.
+
+Document every relationship's cardinality, nullability, uniqueness, effective dates, and lifecycle rules.
+
+Use database constraints where appropriate, and validate joins with integration tests.
+
+## 5. ID Conventions
+
+Use deterministic, immutable identifiers:
+
+- Assets: `AST-000001`.
+- Calibration events: `CAL-<asset-id>-2026-000001`.
+- Certificates: `CERT-<calibration-id>`.
+- Work orders: `WO-2026-000001`.
+- Production uses: `USE-<asset-id>-<timestamp>`.
+
+Make ID generation configurable for datasets spanning multiple years. Use collision-safe counters and deterministic ordering. Do not derive IDs from mutable names.
+
+Use ISO 8601 timestamps and a consistent timezone policy. Document whether calibration intervals use calendar days, UTC, or plant-local time.
+
+## 6. Deterministic Synthetic Data Generator
+
+Create a standalone, configurable generator in `generator/`.
+
+Default seed: `20261022`.
+
+Default scale:
+- 2,000 instruments.
+- 5,000 calibration events.
+- 100,000 production-use events.
+- Supporting suppliers, plans, certificates, work orders, alerts, assessments, exceptions, batches, and audit records.
+
+Generate records over a configurable one-year period, with explicit start and end dates.
+
+Support two modes:
+
+- `starter`: small dataset for local development and rapid testing.
+- `full`: the required baseline volume.
+
+Example commands:
+
+`python -m generator.generate --profile starter --seed 20261022`
+
+`python -m generator.generate --profile full --seed 20261022`
+
+`python -m generator.validate --input-dir data/generated`
+
+Requirements:
+
+1. Generate parent/master data before dependent records.
+2. Generate valid baseline records before injecting anomalies.
+3. Reference valid parent IDs for every dependent record.
+4. Use deterministic pseudorandom generation with a fixed seed.
+5. Generate realistic variation in instrument types, locations, criticality, calibration intervals, supplier usage, measured values, failures, downtime, and production usage.
+6. Calculate derived values from source data.
+7. Parameterize volumes and distributions in a configuration file.
+8. Keep generation independent of the web server.
+9. Use batch database insertion or efficient file generation for full-scale data.
+10. Never use real customer, employee, confidential, or personal data.
+
+### Baseline distribution
+
+Define and document configurable distributions for:
+- Instrument types and criticality.
+- Calibration intervals.
+- PASS, FAIL, and INDETERMINATE outcomes.
+- Certificate completeness.
+- Work-order types and completion durations.
+- Production-use frequency.
+- Approved exceptions and emergency extensions.
+- Downtime and failure severity.
+
+Avoid arbitrary distributions that contradict the business rules. Compute outcomes from generated measurements and lifecycle state.
+
+## 7. Business Rules Engine
+
+Implement a dedicated compliance service with unit tests.
+
+### Calibration due dates
+
+Calculate the due date from the applicable calibration plan and the relevant calibration completion date.
+
+For example:
+
+`next_due_date = calibration_date + interval_days`
+
+Document the interval convention and handle plan changes using the effective plan applicable to the event.
+
+Detect due-date inconsistencies and generate an alert with the expected and observed dates.
+
+### Production-use decisions
+
+For each production-use event, evaluate the historical calibration state at the event timestamp.
+
+Consider:
+- Latest applicable completed calibration.
+- PASS, FAIL, or INDETERMINATE outcome.
+- Calibration due date.
+- Certificate requirements and verification status.
+- Instrument lifecycle status.
+- Applicable plan and its effective dates.
+- Approved exceptions and their exact scope and expiry.
+- Site policy and instrument criticality.
+
+Return one of:
+- `ALLOWED`
+- `BLOCKED`
+- `REQUIRES_REVIEW`
+
+Store the decision, policy version, evaluated timestamp, and human-readable decision reason.
+
+Do not treat an emergency extension as a blanket exemption. Require explicit authorization, defined scope, and an effective interval.
+
+### Failed calibration
+
+When a calibration fails:
+1. Create or require a corrective-action work order.
+2. Require an impact assessment.
+3. Identify potentially affected production uses since the last known-good calibration, using documented historical rules.
+4. Identify relevant production batches.
+5. Record risk evaluation and disposition.
+6. Raise a high-severity alert when required.
+7. Preserve all state transitions in the audit trail.
+
+A failed calibration must not be considered resolved simply because a work order exists. Track assessment and corrective-action completion independently.
+
+### Certificates
+
+Validate certificate-to-event and certificate-to-asset consistency, status, required metadata, and validity dates.
+
+Detect:
+- Missing required certificate.
+- Certificate for another asset.
+- Expired or rejected certificate.
+- Certificate linked to an invalid calibration event.
+- Duplicate certificate number.
+
+### Alerts
+
+Generate deterministic alerts for:
+- Upcoming calibration.
+- Overdue calibration.
+- Prohibited production use.
+- Missing or invalid certificates.
+- Due-date mismatch.
+- Failed calibration.
+- Missing impact assessment.
+- Unresolved corrective action.
+- Expired exception.
+
+Deduplicate alerts using documented business keys so repeated processing does not create duplicate open alerts.
+
+### Audit trail
+
+Record important state changes and compliance decisions as explicit events. Avoid silently overwriting historical information. Support audit history by asset, calibration, work order, certificate, user, and date range.
+
+## 8. Required Anomaly Injection
+
+After generating valid records, deliberately inject the following labelled scenarios:
+
+1. **DUE_DATE_MISMATCH**
+   - Create a calibration record whose stored due date differs from the plan-derived due date.
+   - Preserve the expected due date in ground truth.
+
+2. **EXPIRED_USE_WITHOUT_EXCEPTION**
+   - Create a production-use event outside its permitted calibration window.
+   - Ensure no applicable approved exception exists.
+   - Expected decision: BLOCKED when the applicable policy prohibits use.
+
+3. **CERTIFICATE_WRONG_ASSET**
+   - Create a deliberately inconsistent certificate-to-asset association.
+   - Ensure the anomaly is isolated and labelled.
+   - The validator must detect it.
+
+4. **MISSING_IMPACT_ASSESSMENT**
+   - Create a failed calibration with no required impact assessment.
+   - Expected outcome: a missing-assessment finding and corrective workflow requirement.
+
+Store anomaly metadata in a separate `ground_truth.csv` and `ground_truth.json`.
+
+Suggested fields:
+- `case_id`.
+- `entity_type`.
+- `entity_id`.
+- `issue_type`.
+- `severity`.
+- `expected_decision`.
+- `expected_value`.
+- `observed_value`.
+- `injected_at`.
+- `explanation`.
+
+Keep ground truth entirely separate from application input features and operational tables. Do not use it to determine the compliance engine's answer.
+
+Allow validation and evaluation code to read ground truth separately.
+
+## 9. Validation and Reproducibility
+
+Implement a comprehensive validation suite.
+
+### Structural validation
+- Primary-key uniqueness.
+- Foreign-key integrity.
+- Required-field completeness.
+- Valid enums and units.
+- Unique serial numbers and certificate numbers where applicable.
+- Duplicate event detection.
+- Valid bridge-table relationships.
+
+### Temporal validation
+- Calibration completion dates must be consistent with their lifecycle.
+- Plan effective dates must be valid and non-overlapping for the same scope.
+- Certificates must have valid issue and verification timestamps.
+- Work-order start and completion dates must be chronologically consistent.
+- Production-use timestamps must be checked against the applicable calibration window.
+- Exceptions must be approved and effective before they can authorize use.
+
+### Business validation
+- Recalculate due dates independently.
+- Reconcile measured values, error calculations, and outcomes.
+- Reconcile certificates to calibration events.
+- Check prohibited-use decisions.
+- Identify failed calibrations without required impact assessments.
+- Validate work-order downtime arithmetic.
+- Check lifecycle transitions and alert resolution.
+- Confirm every injected anomaly is detected by the corresponding validator.
+
+### Reproducibility validation
+
+Generate the dataset twice with the same seed and configuration.
+
+Compare:
+- Row counts per file/table.
+- Canonicalized file checksums.
+- Primary-key sets.
+- Ground-truth labels.
+- Validation results.
+
+Use stable sorting, canonical serialization, fixed timestamp handling, and deterministic ID allocation. Exclude genuinely runtime-dependent fields from checksum inputs or derive them deterministically.
+
+Generate `validation_summary.json` containing:
+- Table row counts.
+- Primary-key violations.
+- Foreign-key violations.
+- Business-rule violations.
+- Expected anomaly counts.
+- Detected anomaly counts.
+- Ground-truth evaluation results.
+- Reproducibility comparison results.
+
+Keep expected injected anomalies separate from unexpected baseline integrity failures.
+
+## 10. Frontend Pages
+
+Create a professional industrial SaaS interface. Use a clean enterprise design with accessible typography, responsive layouts, consistent spacing, clear status badges, data tables, filters, and loading/error states.
+
+### A. Executive Dashboard
+
+Display:
+- Total active instruments.
+- Instruments due soon.
+- Overdue instruments.
+- Calibration compliance percentage.
+- Failed calibrations.
+- Missing or invalid certificates.
+- Prohibited production-use events.
+- Open corrective actions.
+- Total documented downtime.
+- Critical unresolved alerts.
+
+Include charts for:
+- Calibration results over time.
+- Overdue instruments by department.
+- Failure rate by instrument type.
+- Work-order status.
+- Compliance trend.
+- Downtime by cause.
+
+Every KPI must come from actual backend queries and have a documented definition.
+
+### B. Instrument Inventory
+
+Features:
+- Search by asset ID, serial number, name, and location.
+- Filter by instrument type, criticality, department, and lifecycle status.
+- Sort and paginate.
+- Create and edit instruments.
+- View calibration status and next due date.
+- Open a detailed instrument profile.
+
+### C. Instrument Details
+
+Use tabs for:
+- Overview.
+- Calibration history.
+- Certificates.
+- Production usage.
+- Work orders.
+- Alerts.
+- Impact assessments.
+- Audit timeline.
+
+Show the explanation behind the instrument's current compliance state.
+
+### D. Calibration Scheduler
+
+Features:
+- Upcoming calibration calendar.
+- Due-soon and overdue filters.
+- Calibration plan details and effective dates.
+- Create calibration event.
+- Record measured values and results.
+- View generated due date.
+- Schedule maintenance work orders.
+
+### E. Certificate Management
+
+Features:
+- Upload certificate files securely.
+- View metadata and verification state.
+- Search by certificate number and asset.
+- Detect missing, expired, rejected, and mismatched certificates.
+- Review and verify certificates with authorized roles.
+- Link certificates to their originating calibration events.
+
+### F. Production Usage Monitor
+
+Features:
+- Search production-use events.
+- Display ALLOWED, BLOCKED, and REQUIRES_REVIEW decisions.
+- Filter by asset, time period, batch, and decision.
+- Show decision reasons and historical calibration evidence.
+- Record a new use event and immediately evaluate compliance.
+- Prevent prohibited usage according to policy.
+
+### G. Work Orders and Corrective Actions
+
+Features:
+- Create, assign, prioritize, and update work orders.
+- Track downtime.
+- Link work orders to calibration failures.
+- Create root-cause analysis and corrective/preventive actions.
+- Track action owners, due dates, and closure evidence.
+- Prevent closure of required corrective workflows without mandatory evidence.
+
+### H. Impact Assessments
+
+Features:
+- List failed calibrations requiring assessment.
+- Show potentially affected production-use events and batches.
+- Record assessment scope, risk, findings, reviewer, and disposition.
+- Track assessment completion.
+- Preserve approval history.
+
+### I. Alerts and Exceptions
+
+Features:
+- Filter by severity, status, type, and asset.
+- Acknowledge, investigate, and resolve alerts.
+- Request emergency extensions.
+- Approve or reject exceptions with role checks.
+- Show authorization scope, expiry, reason, and approver.
+
+### J. Audit and Data Quality
+
+Features:
+- Search audit history.
+- Inspect before/after state changes.
+- Run data validation.
+- View detected anomalies and reproducibility results.
+- Download validation summaries and compliance reports.
+
+## 11. Backend API Endpoints
+
+Implement versioned REST APIs under `/api/v1`.
+
+Include endpoints such as:
+
+- `GET /dashboard/summary`
+- `GET /dashboard/trends`
+- `GET /assets`
+- `POST /assets`
+- `GET /assets/{asset_id}`
+- `GET /assets/{asset_id}/history`
+- `GET /calibration-plans`
+- `POST /calibration-plans`
+- `GET /calibrations`
+- `POST /calibrations`
+- `GET /certificates`
+- `POST /certificates/upload`
+- `POST /certificates/{certificate_id}/verify`
+- `GET /production-uses`
+- `POST /production-uses`
+- `POST /compliance/evaluate`
+- `GET /work-orders`
+- `POST /work-orders`
+- `GET /impact-assessments`
+- `POST /impact-assessments`
+- `GET /corrective-actions`
+- `POST /corrective-actions`
+- `GET /alerts`
+- `POST /alerts/{alert_id}/acknowledge`
+- `POST /alerts/{alert_id}/resolve`
+- `POST /exceptions`
+- `POST /exceptions/{exception_id}/approve`
+- `POST /exceptions/{exception_id}/reject`
+- `GET /audit-records`
+- `POST /validation/run`
+- `GET /validation/results`
+- `GET /reports/compliance`
+
+Use request validation, pagination, filtering, appropriate HTTP status codes, database transactions, and consistent error responses.
+
+Do not expose sensitive internal stack traces or certificate storage paths.
+
+## 12. Analytics and Evaluation
+
+Calculate KPIs from persisted operational records and compare detector outputs with separate ground truth.
+
+Implement:
+- Calibration compliance rate.
+- Overdue-use detection precision, recall, and F1 score.
+- False-positive rate.
+- Certificate completeness.
+- Failed-calibration impact assessment completion rate.
+- Corrective-action closure rate.
+- Mean time to close work orders.
+- Documented downtime.
+- Data-integrity violation count.
+- Ground-truth anomaly detection rate.
+
+Clearly define denominators, date windows, applicable policy scope, and treatment of approved exceptions.
+
+Avoid data leakage: ground-truth fields must not be used as input to the compliance detector.
+
+Do not claim high detection accuracy unless the generated evaluation metrics support it.
+
+## 13. Export and Documentation
+
+Export:
+- CSV for every core entity.
+- JSON files for entities and metadata.
+- PostgreSQL schema and seed SQL.
+- `ground_truth.csv`.
+- `ground_truth.json`.
+- `data_dictionary.md`.
+- `relationships.md`.
+- `validation_summary.json`.
+- `source_manifest.md`.
+- `README.md`.
+
+The README must document:
+- Architecture.
+- Prerequisites.
+- Environment variables.
+- Local setup.
+- Database migrations.
+- Starter and full dataset generation.
+- Seed and configuration.
+- Test execution.
+- API documentation.
+- Validation and reproducibility procedures.
+- Export formats.
+- Known limitations.
+- Production security considerations.
+
+Since the generated dataset is synthetic, document that fact and record that no external dataset was used. If external reference data is later introduced, document its source, version, retrieval date, license, attribution, and transformations.
+
+## 14. Security and Reliability
+
+Implement:
+- Environment-based secrets.
+- Password hashing.
+- Role-based authorization.
+- Input validation.
+- SQL injection protection through parameterized ORM queries.
+- Safe file upload restrictions and file-size limits.
+- Audit logging.
+- Transactional writes for compliance decisions and state transitions.
+- Database indexes on foreign keys, asset IDs, event timestamps, statuses, and due dates.
+- Idempotent seed and alert-generation operations where appropriate.
+- Safe error handling and structured logs.
+
+Do not expose real production control interfaces or claim to control OT equipment. This application is a monitoring and decision-support platform; actual instrument interlocks require separately engineered and authorized OT integration.
+
+## 15. Testing Requirements
+
+Write automated tests for:
+
+1. Due-date calculations.
+2. Plan effective-date handling.
+3. Calibration pass/fail derivation.
+4. Certificate validation.
+5. Historical production-use decisions.
+6. Approved and expired exceptions.
+7. Failed calibration workflows.
+8. Missing impact assessments.
+9. Work-order lifecycle transitions.
+10. Audit-record creation.
+11. Role-based permissions.
+12. Primary-key and foreign-key validation.
+13. All four required anomaly scenarios.
+14. Starter and full dataset generation.
+15. Fixed-seed reproducibility.
+16. API error handling and pagination.
+
+Include positive cases, boundary cases, failure cases, and authorization failures.
+
+## 16. Implementation Order
+
+Build in this order:
+
+Phase 1: Repository structure, environment configuration, database schema, migrations, and data dictionary.
+
+Phase 2: Deterministic synthetic generator, exports, baseline data, anomaly injection, and ground-truth generation.
+
+Phase 3: Data validators, compliance engine, certificate checks, corrective workflows, and audit trail.
+
+Phase 4: FastAPI endpoints, authentication, authorization, and integration tests.
+
+Phase 5: React frontend, dashboard, inventory, calibration scheduler, certificates, usage monitor, work orders, and alerts.
+
+Phase 6: Analytics, reporting, CSV/JSON/SQL exports, and reproducibility checks.
+
+Phase 7: Docker Compose, setup instructions, seeded demo environment, end-to-end testing, and final documentation.
+
+## 17. Final Acceptance Criteria
+
+The project is complete only when:
+
+- All ten core entities and required supporting entities exist.
+- The full dataset contains exactly 2,000 instruments, 5,000 calibration events, and 100,000 production-use events.
+- IDs follow the specified conventions and remain consistent across all exports.
+- Every normal record passes applicable integrity checks.
+- All four required anomalies are injected, labelled, and detected.
+- Due dates and measurement results are derived from documented rules.
+- Production-use decisions use historical state and applicable policy.
+- Approved exceptions are scoped, time-limited, authorized, and auditable.
+- Failed calibrations trigger required impact assessments and corrective workflows.
+- Certificates reconcile with their calibration events and assets.
+- The UI is connected to working backend APIs and the PostgreSQL database.
+- KPIs are calculated from operational records and evaluated against separate ground truth.
+- All tests pass.
+- Two generations with the same seed and configuration produce identical canonical outputs.
+- CSV, JSON, SQL, documentation, and validation artifacts are available.
+- The project runs locally using documented commands.
+
+## Instructions to the Coding Agent
+
+Start by inspecting the existing repository and preserving any working code. If the repository is empty, initialize the complete project structure.
+
+Do not stop after creating a plan, a wireframe, a schema, or placeholder pages. Implement the application incrementally, run tests, resolve errors, and verify the end-to-end workflow.
+
+Prioritize correct business rules, data integrity, reproducibility, traceability, and working functionality over decorative UI.
+
+If a requirement is ambiguous, choose a reasonable, configurable default, document the assumption, and keep it consistent throughout the application.
+
+At the end, provide:
+1. A summary of implemented features.
+2. The project directory structure.
+3. Commands to run the application.
+4. Commands to generate and validate the full dataset.
+5. Test results.
+6. Dataset row counts and reproducibility checksums.
+7. Any known limitations or incomplete requirements.
+
+Begin implementation now.
